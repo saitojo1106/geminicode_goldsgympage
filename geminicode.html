@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゴールドジム全国探索ナビ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Visualization & Content Choices:
+        - Report Introduction (Exec Summary/Intro): Static text block. Goal: Context, Correct Misconception. Method: HTML. Justification: Sets stage.
+        - Region/Prefecture Filters: Dropdowns. Goal: Filter. Method: HTML select, JS. Interaction: Selection updates list. Justification: Navigate large gym dataset.
+        - Gym Listings: Dynamic cards. Goal: Inform/Compare. Method: HTML/JS. Interaction: Click for modal. Justification: Concise overview. Card content: Name, Location (Prefecture, City), Key Feature (e.g., 24h, JBBF), Photo Policy Icon.
+        - Gym Details Modal: Pop-up. Goal: Detailed Info. Method: HTML/JS. Interaction: Close. Justification: Comprehensive data (Machines, Studio, Photo Policy, Price, Hours, Access, Amenities).
+        - Machine Lineup: Text list in modal. Goal: Inform. Method: HTML.
+        - Studio Programs: Text list/description in modal. Goal: Inform. Method: HTML.
+        - Photo Policy: Text/Icon in modal. Goal: Inform. Method: HTML.
+        - Report Conclusion Snippet: Static text block. Goal: Guidance. Method: HTML. Justification: Final user advice.
+        - CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. No charts planned for this version. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; } /* Tailwind gray-100 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+        .modal-content {
+            background-color: #ffffff; /* white */
+            margin: 5% auto;
+            padding: 30px;
+            border: 1px solid #d1d5db; /* gray-300 */
+            width: 90%;
+            max-width: 850px;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            position: relative;
+        }
+        .close-button {
+            color: #6b7280; /* gray-500 */
+            float: right;
+            font-size: 32px;
+            font-weight: bold;
+            position: absolute;
+            top: 15px;
+            right: 25px;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #111827; /* gray-900 */
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .nav-button {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .nav-button.active {
+            background-color: #d4af37; /* Gold color */
+            color: #111827; /* Dark text for contrast on gold */
+        }
+        .filter-button {
+             background-color: #4b5563; /* gray-600 */
+             color: white;
+        }
+        .filter-button:hover {
+            background-color: #374151; /* gray-700 */
+        }
+        .filter-button.active {
+            background-color: #d4af37; /* Gold */
+            color: #1f2937; /* Dark Gray */
+        }
+        .card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border: 1px solid #e5e7eb; /* gray-200 */
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); /* Tailwind shadow-lg */
+        }
+        .machine-list { list-style-type: disc; margin-left: 20px; }
+        .photo-policy-icon { font-size: 1.1em; margin-left: 4px; vertical-align: middle;}
+        .photo-ok { color: #16a34a; } /* green-600 */
+        .photo-ng { color: #ef4444; } /* red-500 */
+        .photo-unknown { color: #f59e0b; } /* amber-500 */
+        .gold-text { color: #b8860b; } /* DarkGoldenRod, a bit darker gold for text */
+
+        /* Scrollbar styling for modal */
+        .modal-content-body::-webkit-scrollbar {
+            width: 8px;
+        }
+        .modal-content-body::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .modal-content-body::-webkit-scrollbar-thumb {
+            background: #d4af37; /* Gold */
+            border-radius: 10px;
+        }
+        .modal-content-body::-webkit-scrollbar-thumb:hover {
+            background: #b8860b; /* Darker Gold */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-gray-900 text-white p-6 shadow-2xl">
+        <div class="container mx-auto text-center">
+            <h1 class="text-4xl font-bold tracking-tight"><span class="text-[#d4af37]">GOLD'S GYM</span> 全国探索ナビ</h1>
+            <p class="text-gray-300 mt-2 text-lg">日本全国のゴールドジムを見つけ、詳細情報をチェック！</p>
+        </div>
+    </header>
+
+    <nav class="bg-white shadow-md sticky top-0 z-50 py-4">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-3 md:space-y-0">
+                <div class="w-full md:w-auto">
+                    <label for="region-filter" class="mr-2 font-semibold text-gray-700">エリア:</label>
+                    <select id="region-filter" class="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-[#d4af37] focus:border-[#d4af37] w-full md:w-auto">
+                        <option value="all">全国</option>
+                        <option value="東京">東京</option>
+                        <option value="関東">関東（東京除く）</option>
+                        <option value="関西">関西</option>
+                        <option value="東海">東海</option>
+                        <option value="北海道">北海道</option>
+                        <option value="東北">東北</option>
+                        <option value="北陸">北陸</option>
+                        <option value="中四国">中四国</option>
+                        <option value="九州">九州</option>
+                    </select>
+                </div>
+                <div class="w-full md:w-auto">
+                    <label for="prefecture-filter" class="mr-2 font-semibold text-gray-700">都道府県:</label>
+                    <select id="prefecture-filter" class="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-[#d4af37] focus:border-[#d4af37] w-full md:w-auto">
+                        <option value="all">すべて</option>
+                        </select>
+                </div>
+                 <div class="flex flex-wrap justify-center gap-2 mt-3 md:mt-0">
+                    <button data-feature="24hr" class="feature-btn filter-button text-sm py-2 px-3 rounded-md">24時間営業</button>
+                    <button data-feature="womens_area" class="feature-btn filter-button text-sm py-2 px-3 rounded-md">女性専用エリア</button>
+                    <button data-feature="pool" class="feature-btn filter-button text-sm py-2 px-3 rounded-md">プール</button>
+                    <button data-feature="parking" class="feature-btn filter-button text-sm py-2 px-3 rounded-md">駐車場</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4 md:p-8">
+        <section id="app-introduction" class="mb-10 bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b-2 border-gray-200 pb-2">ゴールドジム探索ナビへようこそ！</h2>
+            <p class="text-gray-700 leading-relaxed">本アプリケーションは、「ゴールドジム全国情報詳細調査」レポートに基づき、日本全国に広がるゴールドジムの店舗網と各店舗の詳細情報を提供します。「ゴールドジムは店舗数が少ないのでは？」という印象をお持ちの方もいらっしゃるかもしれませんが、実際には全国の主要都市を中心に多数の店舗が展開され、ワールドクラスの設備と多様なサービスを提供しています。このナビゲーターを使って、あなたに最適なゴールドジムを見つけてください。</p>
+        </section>
+
+        <div class="mb-6 text-center">
+            <p id="store-count" class="text-xl font-semibold text-gray-700"></p>
+        </div>
+
+        <section id="gym-listings">
+            <div id="gym-cards-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-8">
+                </div>
+            <p id="no-results" class="text-center text-gray-500 text-xl hidden mt-10">該当するゴールドジムは見つかりませんでした。条件を変更してお試しください。</p>
+        </section>
+
+        <section id="app-conclusion" class="mt-12 bg-white p-6 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800 border-b-2 border-gray-200 pb-2">ゴールドジム選びのヒント</h2>
+            <div class="text-gray-700 leading-relaxed space-y-3">
+                <p>ゴールドジムは、その「ワールドクラス」と称される高品質なマシンラインナップと充実したフリーウェイトエリアを核として、本格的なトレーニーから初心者まで幅広いニーズに対応しています。以下のポイントを参考に、あなたに最適な店舗を見つけましょう：</p>
+                <ul class="list-disc list-inside space-y-1 pl-4">
+                    <li><strong>立地とアクセス:</strong> 自宅や職場からの通いやすさ、駅からの距離、駐車場の有無を確認しましょう。24時間営業の店舗も多く、ライフスタイルに合わせた選択が可能です。</li>
+                    <li><strong>設備:</strong> マシンの種類やフリーウェイトエリアの充実度はもちろん、女性専用エリア、プール、サウナ、タンニング、コラーゲンマシンなど、あなたの目的に合った付帯設備があるかチェックしましょう。</li>
+                    <li><strong>プログラム:</strong> ヨガ、ピラティス、ダンス、格闘技系など、多様なスタジオプログラムが提供されています。興味のあるプログラムがあるか確認しましょう。</li>
+                    <li><strong>料金プラン:</strong> 学生、社会人、ビジター向けなど、多様な料金プランがあります。利用頻度や目的に合わせて最適なプランを選びましょう。エリアメンバーシップやマスターメンバーシップも検討の価値ありです。</li>
+                    <li><strong>撮影ポリシー:</strong> トレーニングの記録やSNS投稿を考えている方は、写真・動画撮影の可否を事前に確認することをおすすめします（多くの場合、店舗への直接確認が必要です）。</li>
+                </ul>
+                <p class="mt-3">このナビゲーターが、あなたのゴールドジム選びの一助となれば幸いです。</p>
+            </div>
+        </section>
+    </main>
+
+    <div id="gymModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal()">&times;</span>
+            <h3 id="modal-gym-name" class="text-3xl font-bold mb-5 text-gray-800 border-b-2 border-gray-300 pb-3"></h3>
+            <div id="modal-gym-details" class="modal-content-body text-gray-700 space-y-5 text-base overflow-y-auto max-h-[65vh] pr-3">
+                </div>
+        </div>
+    </div>
+
+    <footer class="text-center p-8 mt-12 bg-gray-900 text-gray-400">
+        <p>&copy; 2025 ゴールドジム全国探索ナビ. All rights reserved.</p>
+        <p class="text-sm text-gray-500 mt-1">情報源: ゴールドジム全国情報詳細調査レポート</p>
+    </footer>
+
+<script>
+const allGoldsGymData = [
+    // 東京エリア
+    {
+        id: "gg_shibuya_tokyo", name: "ゴールドジム渋谷東京", region: "東京", prefecture: "東京都", city_ward: "渋谷区",
+        address_detail: "東京都渋谷区渋谷1-23-16 cocoti 9F・10F・11F", access_info: "渋谷駅より徒歩4分 [9]",
+        hours: "月～土 7:00～23:30, 日 9:00～20:00 [9]", closing_days: "第3月曜日休館 [9]",
+        machines_freeweights: ["ワールドクラスの設備", "充実したフリーウェイトエリア"],
+        studio_programs: ["ヨガ", "ピラティス", "ダンス", "格闘技系クラスなど多彩。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["岩盤浴 [9]", "準天然温泉 [9]", "ドライサウナ", "シャワールーム", "パウダールーム", "プロテインバー", "プロショップ"],
+        photo_policy: "トレーニング中の撮影が可能 [9]",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "入会登録料5,500円別途。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "ゴールドジム初！トレーニング撮影が可能になった店舗。[9]"
+    },
+    {
+        id: "gg_ginza_tokyo", name: "ゴールドジム銀座東京", region: "東京", prefecture: "東京都", city_ward: "中央区",
+        address_detail: "東京都中央区銀座1-2-1 東京高速道路紺屋ビル 2F", access_info: "銀座一丁目駅直結 [10]",
+        hours: "24時間営業（日20:00クローズ、月7:00オープン）[10]", closing_days: "第2月曜日休館 [10]",
+        machines_freeweights: ["マシン75台", "パワーラック6台", "女性用ダンベル1-10kg", "女性用ハーフラック1台 [10]"],
+        studio_programs: ["ヨガ", "ピラティス", "ダンス等。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["女性専用エリア", "ドライサウナ", "コラーゲンマシン（女性専用）[10]", "プロテインバー", "プロショップ", "駐車場あり（有料提携）[10]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "女性専用エリアが充実。[10]"
+    },
+    {
+        id: "gg_kitasenju_tokyo", name: "ゴールドジム北千住東京", region: "東京", prefecture: "東京都", city_ward: "足立区",
+        address_detail: "東京都足立区千住1-4-1 東京芸術センター 3F", access_info: "北千住駅西口より徒歩5分 [12]",
+        hours: "月～土 7:00～23:30（プール10:00～23:00）, 日 7:00～20:00（プール10:00～20:00）[12]", closing_days: "第3月曜日休館 [12]",
+        machines_freeweights: ["グルートドライブ設置 [12]", "ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["プール [12]", "ドライサウナ", "ミストサウナ", "ジャグジー", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "プール併設店舗。[12]"
+    },
+    {
+        id: "gg_hachioji_tokyo", name: "ゴールドジム八王子東京", region: "東京", prefecture: "東京都", city_ward: "八王子市",
+        address_detail: "東京都八王子市中町5-1 八王子中町ビル B1F・1F・2F", access_info: "JR八王子駅北口より徒歩5分 [8]",
+        hours: "月～土 7:00～23:30, 日 9:00～20:00 [8]", closing_days: "第3月曜日休館 [8]",
+        machines_freeweights: ["パワーラック5台", "プラットフォーム3面", "ベンチプレス4台", "アジャストベンチ5台", "トレーニングマシン100台以上 [8]"],
+        studio_programs: ["マルチパーパススタジオ（ストレッチ、自重、アジリティ、サスペンション）[8]", "バレエ有料レッスンあり [8]"],
+        other_facilities: ["女性専用トレーニングエリア", "ドライサウナ", "岩盤浴 [8]", "準天然温泉 [8]", "駐車場あり（有料提携）[8]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "シニアフィットネス会員あり [8]。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "設備が非常に充実。岩盤浴・温泉も。[8]"
+    },
+    // 関東エリア
+    {
+        id: "gg_yokohama_bashamichi", name: "ゴールドジム横浜馬車道", region: "関東", prefecture: "神奈川県", city_ward: "横浜市中区",
+        address_detail: "神奈川県横浜市中区弁天通4-53-2 DOMONビル 1F～5F", access_info: "馬車道駅より徒歩1分 [49]",
+        hours: "24時間営業 [49]", closing_days: "第2月曜日休館 [49]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "プロテインバー", "プロショップ", "駐車場あり（有料提携）[49]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "フランチャイズ店。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "24時間営業のフランチャイズ店。[49]"
+    },
+    {
+        id: "gg_omiya_saitama", name: "ゴールドジム大宮さいたま", region: "関東", prefecture: "埼玉県", city_ward: "さいたま市大宮区",
+        address_detail: "埼玉県さいたま市大宮区桜木町1-6-2 そごう大宮店パーキング館 9F", access_info: "大宮駅西口より徒歩1分 [42]",
+        hours: "24時間営業 [42]", closing_days: "第3月曜日休館 [42]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "コラーゲンマシン（女性専用）[42]", "タンニングマシン", "プロテインバー", "プロショップ", "駐車場あり（そごう駐車場利用）[42]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "駅直結でアクセス抜群。[42]"
+    },
+     {
+        id: "gg_urayasu_chiba", name: "ゴールドジム浦安千葉", region: "関東", prefecture: "千葉県", city_ward: "浦安市",
+        address_detail: "千葉県浦安市北栄1-15-21", access_info: "浦安駅より徒歩1分 [13]",
+        hours: "月～土 7:00～23:30, 日 9:00～22:00 [13]", closing_days: "第2月曜日休館 [13]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "駅近で便利。[13]"
+    },
+    // 関西エリア
+    {
+        id: "gg_umeda_osaka", name: "ゴールドジム梅田大阪", region: "関西", prefecture: "大阪府", city_ward: "大阪市北区",
+        address_detail: "大阪府大阪市北区茶屋町15-22 アーバンテラス茶屋町 A棟3F・B棟3F", access_info: "阪急梅田駅茶屋町口より徒歩3分 [22]",
+        hours: "24時間営業 [22]", closing_days: "第2月曜日休館 [22]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "コラーゲンマシン（女性専用）[22]", "タンニングマシン", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "マスターメンバーは海外店舗も利用可。[22] 料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "海外店舗も利用可能なマスターメンバーシップあり。[22]"
+    },
+    {
+        id: "gg_osaka_nakanoshima", name: "ゴールドジム大阪中之島", region: "関西", prefecture: "大阪府", city_ward: "大阪市福島区",
+        address_detail: "大阪府大阪市福島区福島1-1-48 堂島クロスウォーク 3F", access_info: "京阪中之島駅より徒歩3分 [22]",
+        hours: "月～土 7:00～23:30, 日 9:00～22:00 [22]", closing_days: "第3月曜日休館 [22]",
+        machines_freeweights: ["グルートドライブ設置 [22]", "ワールドクラスの設備"],
+        studio_programs: ["コンディショニング、ダンス、ボディスカルプティング、格闘技系など多彩。スケジュールは店舗確認。[22, 57]"],
+        other_facilities: ["関西最大級の女性専用トレーニングエリア [22]", "ドライサウナ", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 9,350円～", visitor: "2,860円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "女性専用エリアが非常に充実。[22]"
+    },
+    {
+        id: "gg_shinsaibashi_osaka", name: "ゴールドジム心斎橋大阪", region: "関西", prefecture: "大阪府", city_ward: "大阪市中央区",
+        address_detail: "大阪府大阪市中央区西心斎橋1-16-8 TESLA158 2F・3F", access_info: "心斎橋駅より徒歩4分 [21]",
+        hours: "月～土 7:00～23:30, 日 9:00～22:00 [21]", closing_days: "第2月曜日休館 [21]",
+        machines_freeweights: ["ベンチプレス台3台", "パワーラック4台", "パワー・スクワットマシン1台", "多数のプレートローディングマシン [25の記述を引用、心斎橋店も同様の傾向と推測]"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "新しい店舗でマシンが綺麗と評判。[21]"
+    },
+    {
+        id: "gg_kyoto_nijo", name: "ゴールドジム京都二条", region: "関西", prefecture: "京都府", city_ward: "京都市中京区",
+        address_detail: "京都府京都市中京区西ノ京星池町217 BiVi二条 2F", access_info: "JR二条駅東口より徒歩2分 [54]",
+        hours: "24時間営業（日21:00クローズ、月7:00オープン）[54]", closing_days: "第3月曜日休館 [54]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["JBBF公認ジム [54]", "ドライサウナ", "プール [54]", "タンニングマシン", "コラーゲンマシン（女性専用）", "駐車場あり（有料提携）[54]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "JBBF公認ジム。プール併設。[54]"
+    },
+    // 東海エリア
+    {
+        id: "gg_nagoya_kanayama", name: "ゴールドジム名古屋金山", region: "東海", prefecture: "愛知県", city_ward: "名古屋市中区",
+        address_detail: "愛知県名古屋市中区金山1-17-1 アスナル金山 2F", access_info: "金山総合駅東口より徒歩1分 [29]",
+        hours: "平日・土 7:00～23:30, 日 7:00～22:00 [29]", closing_days: "第2月曜日休館 [29]",
+        machines_freeweights: ["ワールドクラスのトレーニング環境と設備 [29]", "グルートドライブ設置 [21の記述を参照]"],
+        studio_programs: ["ヨガ", "ピラティス", "ダンス", "ボディスカルプティング", "格闘技系エクササイズなど多彩。スケジュールは店舗確認。[21, 34]"],
+        other_facilities: ["ドライサウナ", "コラーゲンマシン（女性専用）[29]", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "学生会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B, 35]" },
+        notes: "駅直結で便利。[29]"
+    },
+    {
+        id: "gg_atsuta_annex", name: "ゴールドジムイオンモール熱田アネックス", region: "東海", prefecture: "愛知県", city_ward: "名古屋市熱田区",
+        address_detail: "愛知県名古屋市熱田区六野1-208-4 イオンモール熱田アネックス", access_info: "金山総合駅よりシャトルバスあり [30]",
+        hours: "24時間営業（日20:00クローズ、月7:00オープン）[30]", closing_days: "第3月曜日休館 [30]",
+        machines_freeweights: ["女性専用マシン（ブーティービルダー、ヒップスラストマシン）[30]", "ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["本格的なサンドバッグルーム [30]", "女性専用エリア", "ドライサウナ", "コラーゲンマシン（女性専用）[30]", "タンニングマシン", "プロテインバー", "プロショップ", "駐車場あり（無料181台）[30]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "イオンモール併設で駐車場多数。女性向け設備充実。[30]"
+    },
+    // 北海道エリア
+    {
+        id: "gg_sapporo_odori", name: "ゴールドジム札幌大通", region: "北海道", prefecture: "北海道", city_ward: "札幌市中央区",
+        address_detail: "北海道札幌市中央区南1条西4-20-1 ビッグタワー大通ビル B1F・B2F", access_info: "大通駅より徒歩1分 [34]",
+        hours: "24時間営業（日・祝20:00まで）[34]", closing_days: "第2金曜日休館 [34]",
+        machines_freeweights: ["ダンベル90kgまで [33]", "ワールドクラスの器具（B1Fマシンジム, B2Fフリーウェイトジム）[33]"],
+        studio_programs: ["ヨガ", "エアロビクス", "ステップ", "ダンス", "コンディショニングなど多彩。スケジュールは店舗確認。[34, 35]"],
+        other_facilities: ["ドライサウナ", "プロテインバー", "プロショップ"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "マスターフルタイム会員 14,850円", student: "学生会員 8,250円", visitor: "3,740円", notes: "入会金5,500円別途。多様なプランあり。[34, 4]" },
+        notes: "フリーウェイトエリアが特に充実。フランチャイズ店。[33, 34]"
+    },
+    {
+        id: "gg_hakodate_hokkaido", name: "ゴールドジム函館北海道", region: "北海道", prefecture: "北海道", city_ward: "函館市",
+        address_detail: "北海道函館市昭和1-29-2 函館昭和タウンプラザ内", access_info: "五稜郭駅より車で約5分 [64]",
+        hours: "平日10:00～23:00, 土10:00～22:00, 日祝10:00～21:00 [64]", closing_days: "第2火曜日休館 [64]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "タンニングマシン", "プロテインバー", "プロショップ", "駐車場あり（無料128台）[64]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "フランチャイズ店。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "駐車場完備のフランチャイズ店。[64]"
+    },
+    // 東北エリア
+    {
+        id: "gg_sendai_miyagi", name: "ゴールドジム仙台宮城", region: "東北", prefecture: "宮城県", city_ward: "仙台市青葉区",
+        address_detail: "宮城県仙台市青葉区中央3-6-1 仙台TRビル 8F", access_info: "仙台駅西口より徒歩5分 [65]",
+        hours: "24時間営業 [65]", closing_days: "第3月曜日休館 [65]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["ヨガ、ピラティス、ダンス、格闘技系など多彩。スケジュールは店舗確認。[65]"],
+        other_facilities: ["ドライサウナ", "タンニングマシン", "コラーゲンマシン", "プロテインバー", "プロショップ", "駐車場あり（有料提携）[65]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "仙台駅近くの24時間営業店。[65]"
+    },
+    // 北陸エリア
+    {
+        id: "gg_toyama_kansui", name: "ゴールドジム富山環水公園", region: "北陸", prefecture: "富山県", city_ward: "富山市",
+        address_detail: "富山県富山市湊入船町3-30", access_info: "富山駅北口より徒歩10分 [67]",
+        hours: "平日 10:00～23:00, 土 10:00～21:00, 日祝 10:00～19:00 [67]", closing_days: "第2月曜日休館 [67]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["ヨガ、ダンス、格闘技系など多彩。スケジュールは店舗確認。[67]"],
+        other_facilities: ["ドライサウナ", "タンニングマシン", "コラーゲンマシン", "プロテインバー", "プロショップ", "駐車場あり（無料）[67]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "フランチャイズ店。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "環水公園近くのフランチャイズ店。[67]"
+    },
+    // 中四国エリア
+    {
+        id: "gg_hiroshima_pasela", name: "ゴールドジム広島パセーラ", region: "中四国", prefecture: "広島県", city_ward: "広島市中区",
+        address_detail: "広島県広島市中区基町6-78 基町クレド・パセーラ 6F", access_info: "県庁前駅直結 [72]",
+        hours: "平日 10:00～23:00, 土 10:00～22:00, 日祝 10:00～20:00 [72]", closing_days: "第2月曜日休館 [72]",
+        machines_freeweights: ["ワールドクラスの設備", "女性専用ヒップトレーニングマシン [72]"],
+        studio_programs: ["ヨガ、ダンス、格闘技系など多彩。スケジュールは店舗確認。[72]"],
+        other_facilities: ["女性専用エリア", "ドライサウナ", "タンニングマシン", "コラーゲンマシン", "プロテインバー", "プロショップ", "駐車場あり（有料提携）[72]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 11,550円～", student: "スチューデント会員 8,800円～", visitor: "3,080円/回", notes: "フランチャイズ店。料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "駅直結の商業施設内店舗。女性向け設備も。[72]"
+    },
+    // 九州エリア
+    {
+        id: "gg_hakata_riverain", name: "ゴールドジム博多リバレイン", region: "九州", prefecture: "福岡県", city_ward: "福岡市博多区",
+        address_detail: "福岡県福岡市博多区下川端町3-1 博多リバレインモール B1F", access_info: "中洲川端駅直結 [38]",
+        hours: "24時間営業（日20:00クローズ、翌月曜7:00から）[38]", closing_days: "第2月曜日休館 [38]",
+        machines_freeweights: ["ワールドクラスの設備", "デッドリフト・クリーン用プラットフォーム", "ジャッキ付きプラットフォーム", "ヒップマシン [3, 38]"],
+        studio_programs: ["ヨガ、ピラティス、ダンス、ボディスカルプティング、格闘技系など多彩。マルチスタジオあり。スケジュールは店舗確認。[3, 38, 39]"],
+        other_facilities: ["ドライサウナ", "タンニングマシン", "コラーゲンマシン（女性専用）", "プロテインバー", "プロショップ", "駐車場あり（有料提携）[38]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 10,670円～", student: "学生会員 8,470円～", visitor: "2,860円/回", notes: "料金はエリア・会員種別により異なる。[IV.B, 40]" },
+        notes: "トップアスリートも利用。24時間営業。[3, 38]"
+    },
+    {
+        id: "gg_commercial_mall_hakata", name: "ゴールドジムコマーシャルモール博多", region: "九州", prefecture: "福岡県", city_ward: "福岡市博多区",
+        address_detail: "福岡県福岡市博多区東光寺町2-6-40 コマーシャルモール博多 2F", access_info: "竹下駅より徒歩15分 [41]",
+        hours: "24時間営業 [41]", closing_days: "第2月曜日休館 [41]",
+        machines_freeweights: ["ワールドクラスの設備"],
+        studio_programs: ["多彩なプログラム。スケジュールは店舗確認。[IV.C]"],
+        other_facilities: ["ドライサウナ", "駐車場あり（無料）[41]"],
+        photo_policy: "記載なし (要確認)",
+        pricing: { general: "フルタイム会員 10,670円～", student: "学生会員 8,470円～", visitor: "2,860円/回", notes: "料金はエリア・会員種別により異なる。[IV.B]" },
+        notes: "無料駐車場完備の24時間営業店。[41]"
+    }
+];
+
+
+let currentRegionFilter = 'all';
+let currentPrefectureFilter = 'all';
+let activeFeatureFilters = new Set();
+
+const regionFilterSelect = document.getElementById('region-filter');
+const prefectureFilterSelect = document.getElementById('prefecture-filter');
+const featureBtns = document.querySelectorAll('.feature-btn');
+const gymCardsContainer = document.getElementById('gym-cards-container');
+const gymListTitle = document.getElementById('gym-list-title'); // Not currently used, but can be added
+const noResultsMsg = document.getElementById('no-results');
+const storeCountDisplay = document.getElementById('store-count');
+
+const modal = document.getElementById('gymModal');
+const modalGymName = document.getElementById('modal-gym-name');
+const modalGymDetails = document.getElementById('modal-gym-details');
+
+function getPhotoPolicyIcon(policy) {
+    if (!policy || policy.toLowerCase().includes("記載なし") || policy.toLowerCase().includes("要確認")) {
+        return '<span class="photo-policy-icon photo-unknown" title="撮影ポリシー: 要確認">❓</span>';
+    } else if (policy.toLowerCase().includes("可能") || policy.toLowerCase().includes("可")) {
+        return '<span class="photo-policy-icon photo-ok" title="撮影ポリシー: 可能">✔️</span>';
+    } else if (policy.toLowerCase().includes("不可") || policy.toLowerCase().includes("禁止")) {
+        return '<span class="photo-policy-icon photo-ng" title="撮影ポリシー: 不可">🚫</span>';
+    }
+    return '<span class="photo-policy-icon photo-unknown" title="撮影ポリシー: 要確認">❓</span>';
+}
+
+function populatePrefectureFilter(selectedRegion) {
+    const prefectures = new Set();
+    allGoldsGymData.forEach(gym => {
+        if (selectedRegion === 'all' || gym.region === selectedRegion || (selectedRegion === '関東' && gym.region !== '東京')) {
+            prefectures.add(gym.prefecture);
+        }
+    });
+
+    prefectureFilterSelect.innerHTML = '<option value="all">すべての都道府県</option>';
+    const sortedPrefectures = Array.from(prefectures).sort();
+    sortedPrefectures.forEach(pref => {
+        const option = document.createElement('option');
+        option.value = pref;
+        option.textContent = pref;
+        prefectureFilterSelect.appendChild(option);
+    });
+    currentPrefectureFilter = 'all'; // Reset prefecture filter when region changes
+}
+
+
+function displayGyms() {
+    gymCardsContainer.innerHTML = '';
+    let filteredGyms = allGoldsGymData;
+
+    if (currentRegionFilter !== 'all') {
+        if (currentRegionFilter === '関東') { // Special case for "関東（東京除く）"
+             filteredGyms = filteredGyms.filter(gym => gym.region === currentRegionFilter && gym.prefecture !== '東京都');
+        } else {
+            filteredGyms = filteredGyms.filter(gym => gym.region === currentRegionFilter);
+        }
+    }
+
+    if (currentPrefectureFilter !== 'all') {
+        filteredGyms = filteredGyms.filter(gym => gym.prefecture === currentPrefectureFilter);
+    }
+
+    if (activeFeatureFilters.size > 0) {
+        filteredGyms = filteredGyms.filter(gym => {
+            return Array.from(activeFeatureFilters).every(feature => {
+                if (feature === '24hr') return gym.hours.includes('24時間');
+                if (feature === 'womens_area') return gym.other_facilities.some(f => f.includes('女性専用エリア') || f.includes('女性専用マシン'));
+                if (feature === 'pool') return gym.other_facilities.some(f => f.includes('プール'));
+                if (feature === 'parking') return gym.other_facilities.some(f => f.includes('駐車場'));
+                return false;
+            });
+        });
+    }
+    
+    storeCountDisplay.textContent = `表示件数: ${filteredGyms.length}件`;
+
+    if (filteredGyms.length === 0) {
+        noResultsMsg.classList.remove('hidden');
+    } else {
+        noResultsMsg.classList.add('hidden');
+        filteredGyms.forEach(gym => {
+            const card = document.createElement('div');
+            card.className = 'card bg-white p-5 rounded-xl shadow-lg hover:shadow-xl cursor-pointer flex flex-col justify-between';
+            const photoIcon = getPhotoPolicyIcon(gym.photo_policy);
+            
+            let featuresShort = [];
+            if(gym.hours.includes("24時間")) featuresShort.push("24時間");
+            if(gym.other_facilities.some(f => f.includes("女性専用エリア"))) featuresShort.push("女性エリア");
+            if(gym.other_facilities.some(f => f.includes("プール"))) featuresShort.push("プール");
+             if(gym.other_facilities.some(f => f.includes("駐車場"))) featuresShort.push("駐車場");
+
+
+            card.innerHTML = `
+                <div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-800 truncate" title="${gym.name}">${gym.name}</h3>
+                    <p class="text-sm text-gray-500 mb-1"><span class="font-semibold">地域:</span> ${gym.prefecture}, ${gym.city_ward}</p>
+                    <p class="text-xs text-gray-500 mb-3 h-10 overflow-hidden">${gym.access_info}</p>
+                    <div class="mb-3 text-xs">
+                        ${featuresShort.length > 0 ? featuresShort.map(f => `<span class="inline-block bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1 mb-1">${f}</span>`).join('') : '<span class="text-gray-400">特徴確認中</span>'}
+                    </div>
+                </div>
+                <div class="flex justify-between items-center text-sm mt-auto pt-3 border-t border-gray-200">
+                    <span class="text-gray-600" title="撮影ポリシー: ${gym.photo_policy.replace(/\[\d+\]/g, '').trim()}">撮影: ${photoIcon}</span>
+                    <button class="bg-gray-800 hover:bg-[#d4af37] text-white hover:text-gray-900 font-semibold py-2 px-3 rounded-lg text-xs transition duration-150 ease-in-out learn-more-btn">詳細</button>
+                </div>
+            `;
+            card.querySelector('.learn-more-btn').onclick = (e) => {
+                 e.stopPropagation();
+                 openModal(gym);
+            };
+            card.onclick = () => openModal(gym);
+            gymCardsContainer.appendChild(card);
+        });
+    }
+}
+
+function formatPrice(pricing) {
+    let priceHtml = '';
+    if (pricing.general) priceHtml += `<p><strong>一般会員:</strong> ${pricing.general.replace(/\[\d+\]/g, '').trim()}</p>`;
+    if (pricing.student) priceHtml += `<p><strong>学生会員:</strong> ${pricing.student.replace(/\[\d+\]/g, '').trim()}</p>`;
+    if (pricing.visitor) priceHtml += `<p><strong>ビジター利用:</strong> ${pricing.visitor.replace(/\[\d+\]/g, '').trim()}</p>`;
+    if (pricing.notes) priceHtml += `<p class="text-sm text-gray-500 mt-1"><em>備考: ${pricing.notes.replace(/\[\d+\]/g, '').trim()}</em></p>`;
+    return priceHtml || '<p>料金詳細は店舗にお問い合わせください。</p>';
+}
+
+function formatArrayToList(items, title) {
+    if (!items || items.length === 0 || (items.length === 1 && items[0].includes("記載なし"))) {
+        return `<p>${title}: 詳細は店舗にご確認ください。</p>`;
+    }
+    let html = `<h4 class="text-md font-semibold text-gray-700 mt-3 mb-1">${title}</h4><ul class="list-disc list-inside text-sm space-y-1">`;
+    items.forEach(item => {
+        html += `<li>${item.replace(/\[\d+\]/g, '').trim()}</li>`;
+    });
+    html += '</ul>';
+    return html;
+}
+
+function openModal(gym) {
+    modalGymName.textContent = gym.name;
+    let detailsHtml = `
+        <div>
+            <h4 class="text-md font-semibold text-gray-700 mb-1">所在地・アクセス</h4>
+            <p class="text-sm">${gym.prefecture} ${gym.city_ward}, ${gym.address_detail.replace(/\[\d+\]/g, '').trim()}</p>
+            <p class="text-sm">${gym.access_info.replace(/\[\d+\]/g, '').trim()}</p>
+        </div>
+        <div>
+            <h4 class="text-md font-semibold text-gray-700 mt-3 mb-1">営業時間</h4>
+            <p class="text-sm">${gym.hours.replace(/\[\d+\]/g, '').trim()}</p>
+            ${gym.closing_days ? `<p class="text-sm">休館日: ${gym.closing_days.replace(/\[\d+\]/g, '').trim()}</p>` : ''}
+        </div>
+        
+        ${formatArrayToList(gym.machines_freeweights, "マシン・フリーウェイト")}
+        ${formatArrayToList(gym.studio_programs, "スタジオプログラム")}
+        ${formatArrayToList(gym.other_facilities, "その他設備")}
+
+        <div>
+            <h4 class="text-md font-semibold text-gray-700 mt-3 mb-1">写真・動画撮影ポリシー</h4>
+            <p class="text-sm">${gym.photo_policy.replace(/\[\d+\]/g, '').trim()}</p>
+        </div>
+        <div>
+            <h4 class="text-md font-semibold text-gray-700 mt-3 mb-1">料金体系</h4>
+            ${formatPrice(gym.pricing)}
+        </div>
+        ${gym.notes ? `<div><h4 class="text-md font-semibold text-gray-700 mt-3 mb-1">備考</h4><p class="text-sm">${gym.notes.replace(/\[\d+\]/g, '').trim()}</p></div>` : ''}
+    `;
+    modalGymDetails.innerHTML = detailsHtml;
+    modal.style.display = "block";
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    modal.style.display = "none";
+    document.body.style.overflow = 'auto';
+}
+
+window.onclick = function(event) {
+    if (event.target == modal) {
+        closeModal();
+    }
+}
+
+regionFilterSelect.addEventListener('change', (event) => {
+    currentRegionFilter = event.target.value;
+    populatePrefectureFilter(currentRegionFilter);
+    displayGyms();
+});
+
+prefectureFilterSelect.addEventListener('change', (event) => {
+    currentPrefectureFilter = event.target.value;
+    displayGyms();
+});
+
+featureBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const feature = btn.dataset.feature;
+        if (activeFeatureFilters.has(feature)) {
+            activeFeatureFilters.delete(feature);
+            btn.classList.remove('active');
+        } else {
+            activeFeatureFilters.add(feature);
+            btn.classList.add('active');
+        }
+        displayGyms();
+    });
+});
+
+
+// Initial display
+populatePrefectureFilter('all');
+displayGyms();
+
+</script>
+</body>
+</html>
